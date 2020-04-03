@@ -12,19 +12,57 @@ const app = express();
 
 app.use(express.json());
 
+const events = eventsIds => {
+    return Event.find({_id: {$in: eventsIds}})
+        .then(events => {
+            return events.map(event => {
+                return {
+                    ...event._doc,
+                    _id: event.id,
+                    creator: user.bind(this, event.creator)
+                };
+            });
+        })
+        .catch(err => {
+            throw err;
+        })
+}
+
+const user = userId => {
+    return User.findById(userId)
+    .then(user => {
+        return {...user.doc, _id:user.id, 
+            createdEvents: events.bind(this, user._doc.createdEvents)
+        };
+    })
+    .catch(err => {
+        throw err;
+    });
+};
+
+
 app.use('/graphql', graphqlHttp({
     schema: buildSchema(` 
+        type Booking {
+            _id: ID!
+            event: Event!
+            user: User!
+            createdAt: String!
+            updatedAt: String!
+        }
         type Event {
             _id: ID!
             title: String!
             description: String!
             price: Float!
             date: String!
+            creator: User!
         }
         type User {
             _id: ID!
             email: String!
-            password: String  
+            password: String
+            createdEvents: [Event!]  
         }
 
         input EventInput {
@@ -41,10 +79,13 @@ app.use('/graphql', graphqlHttp({
 
         type RootQuery {  
             events: [Event!]!
+            bookings: [Booking!]!
         }
         type RootMutation {
             createEvent(eventInput: EventInput): Event
             createUser(userInput: UserInput): User
+            bookEvent(eventId: ID!): Booking!
+            cancelBooking(bookingId: ID!): Event!
         }
 
         schema {
@@ -57,10 +98,14 @@ app.use('/graphql', graphqlHttp({
     //resolver, names must match keys above.
     rootValue: {
         events: () => {
-            return Event.find() //you can pass in what you want, or nothing and retrieve everything. 
+            return Event.find()  //you can pass in what you want, or nothing and retrieve everything. 
             .then(events => {
                 return events.map(event => {
-                    return {...event._doc};  //._doc leaves out the metadata
+                    return {
+                        ...event._doc,
+                        _id: event.id,
+                        creator: user.bind(this, event._doc.creator)  
+                    };  //._doc leaves out the metadata
                 })
             })
         },
@@ -72,8 +117,10 @@ app.use('/graphql', graphqlHttp({
                  date: new Date(args.eventInput.date),
                  creator: "5e864c54ca241d15644607c3"
             });
+        
             let createdEvent;
-           return event  //returning here makes this an async operation that will return a Promise.
+           
+            return event  //returning here makes this an async operation that will return a Promise.
            .save()
            .then(result => {
                createdEvent = {...result._doc};
